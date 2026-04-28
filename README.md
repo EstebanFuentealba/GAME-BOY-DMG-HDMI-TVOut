@@ -1,14 +1,24 @@
 # GAME BOY DMG-001 → HDMI Output
 
+<p align='center'>
+    <picture>
+        <img
+            alt="Project"
+            src="./assets/GB.png">
+    </picture>
+</p>
+
 Hardware project to capture the LCD signal from an original Game Boy DMG-001 and output it to any HDMI monitor or TV using an RP2040 (Raspberry Pi Zero).
 
 ## How it works
 
-<picture>
-    <img
-        alt="Project"
-        src="./assets/gameboy_dmg_hdmi_schema_v3.svg">
-</picture>
+<p align='center'>
+    <picture>
+        <img
+            alt="Project"
+            src="./assets/gameboy_dmg_hdmi_schema_v3.svg">
+    </picture>
+</p>
 
 The Sharp LR35902 CPU generates raw LCD signals (VSYNC, HSYNC, Pixel Clock, D0–D1) at 5 V logic. These signals are level-shifted down to 3.3 V using individual BSS138 N-MOSFET transistors with 10 kΩ pull-up resistors on both sides. The RP2040 captures the shifted signals via its PIO state machines, buffers the 160×144 framebuffer in SRAM, and outputs a DVI/TMDS signal through a Micro-HDMI connector using a custom firmware.
 
@@ -21,11 +31,13 @@ The Sharp LR35902 CPU generates raw LCD signals (VSYNC, HSYNC, Pixel Clock, D0�
 
 ## Pinout GAME BOY DMG-001
 
-<picture>
-    <img
-        alt="GB DMG Pinout Flex"
-        src="./assets/GB-DMG-Pinout-Flex.png">
-</picture>
+<p align='center'>
+    <picture>
+        <img
+            alt="GB DMG Pinout Flex"
+            src="./assets/GB-DMG-Pinout-Flex.png">
+    </picture>
+</p>
 
 | Pin   | Nombre / Señal              | Descripción                                                                 |
 |-------|----------------------------|-----------------------------------------------------------------------------|
