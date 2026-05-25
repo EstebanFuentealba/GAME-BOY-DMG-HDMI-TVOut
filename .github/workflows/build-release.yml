@@ -1,0 +1,81 @@
+name: Build gameboy_dvi UF2
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to create or update. Defaults to build-<run number>."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build and publish UF2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi
+
+      - name: Fetch Pico SDK
+        run: |
+          git clone --depth 1 https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
+          git -C "$RUNNER_TEMP/pico-sdk" submodule update --init --depth 1
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DPICO_SDK_PATH="$RUNNER_TEMP/pico-sdk"
+
+      - name: Build gameboy_dvi
+        run: cmake --build build --target gameboy_dvi --parallel
+
+      - name: Prepare release asset
+        run: cp build/apps/gameboy_dvi/gameboy_dvi.uf2 gameboy_dvi.uf2
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gameboy_dvi.uf2
+          path: gameboy_dvi.uf2
+          if-no-files-found: error
+
+      - name: Resolve release tag
+        id: release
+        env:
+          RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          elif [ -n "${RELEASE_TAG_INPUT}" ]; then
+            tag="${RELEASE_TAG_INPUT}"
+          else
+            tag="build-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish gameboy_dvi.uf2 to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
+              --notes "Automated gameboy_dvi UF2 build."
+          fi
+          gh release upload "$RELEASE_TAG" gameboy_dvi.uf2 --clobber
