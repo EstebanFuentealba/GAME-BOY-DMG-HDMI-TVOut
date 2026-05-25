@@ -1,0 +1,263 @@
+; PIO program for Game Boy video capture
+; Captures pixels and pushes to FIFO for DMA transfer
+; Synchronized to VSYNC, HSYNC and pixel clock
+;
+; Pin mapping (GPIO):
+;   HSYNC_PIN = 0
+;   DATA_0_PIN = 1
+;   DATA_1_PIN = 2
+;   PIXEL_CLOCK_PIN = 3
+;   VSYNC_PIN = 4
+;
+; DATA pins are consecutive (1,2), so we read from base pin 1:
+;   Pin 0 (relative) = GPIO 1 = DATA_1
+;   Pin 1 (relative) = GPIO 2 = DATA_0
+; We'll read 2 bits and get DATA_0 (LSB), DATA_1 (MSB)
+
+; PIO Program - IRQ-based VSYNC synchronization
+; The VSYNC IRQ handler starts the PIO SM at the exact moment of VSYNC rising edge
+; PIO just captures scanlines continuously, DMA stops at exactly 144 lines (5760 bytes)
+.program video_capture_irq
+
+.wrap_target
+    ; No VSYNC wait here - the IRQ handler ensures we start at the right time
+    ; Just start capturing lines immediately when SM is enabled
+    
+line_loop:
+    ; Wait for HSYNC to start line  
+    wait 1 gpio 0       ; Wait for HSYNC high (blanking/setup)
+    wait 0 gpio 0       ; Wait for HSYNC low (falling edge - start of visible line)
+    
+    ; Small delay to ensure we're at the first pixel
+    ; The first pixel becomes available immediately after HSYNC goes low
+    nop [4]             ; Delay 4 cycles to align with first pixel
+    
+    ; Capture 160 pixels (20 groups of 8)
+    set x, 19           ; 20 iterations (0-19)
+    nop [1]             ; Extra delay for timing
+
+pixel_group_loop:
+    set y, 7            ; 8 pixels per group
+    
+pixel_loop:
+    ; Wait for pixel clock edge - Game Boy pixel clock is ~1MHz
+    ; Pixel data is valid on the FALLING edge of the clock
+    wait 1 gpio 3       ; Wait for clock HIGH
+    wait 0 gpio 3       ; Wait for clock FALLING edge
+    in pins, 2          ; Read 2 bits (DATA_0 and DATA_1) on falling edge
+    
+    jmp y-- pixel_loop  ; Inner loop: 8 pixels
+    
+    jmp x-- pixel_group_loop  ; Outer loop: 20 groups (160 pixels total)
+
+    jmp line_loop       ; Go back to wait for NEXT line's HSYNC
+.wrap
+
+% c-sdk {
+
+#include "hardware/dma.h"
+#include "hardware/gpio.h"
+#include "hardware/pio.h"
+#include "pico/time.h"
+
+static int video_dma_chan;
+static volatile bool video_frame_ready;
+static volatile uint8_t* video_completed_frame;
+static PIO video_capture_pio;
+static uint video_capture_sm;
+static uint video_capture_program_offset;
+static volatile bool video_dma_active = false;
+static volatile bool capture_armed = false;
+static volatile uint32_t frame_count = 0;
+
+// VSYNC IRQ handler - handles only VSYNC GPIO 4
+static inline void video_capture_vsync_irq_handler(uint32_t events)
+{
+    if (events & GPIO_IRQ_EDGE_RISE) {
+        frame_count++;
+        
+        // If we have an armed capture waiting, start it NOW
+        if (capture_armed) {
+            // First, ensure PIO is stopped and FIFO is empty
+            pio_sm_set_enabled(video_capture_pio, video_capture_sm, false);
+            pio_sm_clear_fifos(video_capture_pio, video_capture_sm);
+            pio_sm_restart(video_capture_pio, video_capture_sm);
+            // Reset PC to program start (pio_sm_restart does NOT reset PC)
+            pio_sm_exec(video_capture_pio, video_capture_sm,
+                        pio_encode_jmp(video_capture_program_offset));
+
+            // Reset DMA counter
+            dma_channel_abort(video_dma_chan);
+            
+            // Start DMA first so FIFO can drain immediately
+            dma_channel_start(video_dma_chan);
+            video_dma_active = true;
+            
+            // Small delay before enabling PIO
+            for (volatile int i = 0; i < 10; i++);
+            
+            // Enable the PIO state machine
+            pio_sm_set_enabled(video_capture_pio, video_capture_sm, true);
+            capture_armed = false;
+        }
+    }
+}
+
+// Get the handler so main.c can call it
+static inline void video_capture_handle_vsync_irq(uint32_t events) {
+    video_capture_vsync_irq_handler(events);
+}
+
+static inline uint32_t video_capture_get_frame_count(void) {
+    return frame_count;
+}
+
+// Polling alternative to IRQ handler: call frequently to detect DMA completion.
+static inline bool video_capture_poll_complete(void)
+{
+    if (video_frame_ready)
+        return true;
+
+    if (!video_dma_active)
+        return false;
+
+    if (dma_channel_is_busy(video_dma_chan))
+        return false;
+
+    // DMA complete
+    pio_sm_set_enabled(video_capture_pio, video_capture_sm, false);
+    pio_sm_clear_fifos(video_capture_pio, video_capture_sm);
+
+    video_frame_ready = true;
+    video_dma_active = false;
+    capture_armed = false;
+
+    return true;
+}
+
+// Helper function to initialize the PIO program
+static inline void video_capture_program_init(PIO pio, uint sm, uint offset) 
+{
+    // Store PIO, SM, and program offset for use in handlers
+    video_capture_pio = pio;
+    video_capture_sm = sm;
+    video_capture_program_offset = offset;
+    
+    pio_sm_config c = video_capture_irq_program_get_default_config(offset);
+
+    // Clear flags
+    video_frame_ready = false;
+    video_dma_active = false;
+    capture_armed = false;
+    
+    // Set input base pin to DATA_1 (GPIO 1)
+    // This makes: pin 0 = GPIO 1 (DATA_1), pin 1 = GPIO 2 (DATA_0)
+    sm_config_set_in_pins(&c, 1);
+    
+    // Configure autopush - push every 8 bits (4 pixels @ 2 bits each)
+    sm_config_set_in_shift(&c, false, true, 8);
+    
+    // Run at full speed (clock divider = 1)
+    sm_config_set_clkdiv(&c, 1.0f);
+    
+    // Initialize the state machine
+    pio_sm_init(pio, sm, offset, &c);
+    
+    // Set up VSYNC GPIO (GPIO 4) as input with pull-down
+    gpio_init(4);
+    gpio_set_dir(4, GPIO_IN);
+    gpio_pull_down(4);
+    
+    // DO NOT enable PIO SM yet - will be enabled by VSYNC IRQ
+}
+
+// Initialize DMA for video capture
+static inline int video_capture_dma_init(PIO pio, uint sm, uint irq_num, uint8_t* framebuffer, size_t frame_size)
+{
+    // Claim DMA channel
+    video_dma_chan = dma_claim_unused_channel(true);
+    if (video_dma_chan < 0)
+        return -1;
+    
+    // Configure DMA channel - reads from PIO FIFO
+    dma_channel_config c = dma_channel_get_default_config(video_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, false);
+    channel_config_set_write_increment(&c, true);
+    channel_config_set_dreq(&c, pio_get_dreq(pio, sm, false));
+    
+    // Set up the DMA transfer
+    dma_channel_configure(
+        video_dma_chan,
+        &c,
+        framebuffer,
+        &pio->rxf[sm],
+        frame_size,
+        false
+    );
+
+    // Enable DMA interrupt if requested
+    if (irq_num == DMA_IRQ_0) {
+        dma_channel_set_irq0_enabled(video_dma_chan, true);
+    } else if (irq_num == DMA_IRQ_1) {
+        dma_channel_set_irq1_enabled(video_dma_chan, true);
+    }
+
+    return video_dma_chan;
+}
+
+// Start video capture for a single frame
+static inline void video_capture_start_frame(PIO pio, uint sm, uint8_t* framebuffer, size_t frame_size) 
+{
+    // Configure DMA for new buffer
+    dma_channel_set_write_addr(video_dma_chan, framebuffer, false);
+    dma_channel_set_trans_count(video_dma_chan, frame_size, false);
+    
+    // Reset flags
+    video_frame_ready = false;
+    video_completed_frame = framebuffer;
+    video_dma_active = false;
+    
+    // Arm the capture - will start on next VSYNC
+    capture_armed = true;
+}
+
+// Stop video capture
+static inline void video_capture_stop(PIO pio, uint sm)
+{
+    pio_sm_set_enabled(pio, sm, false);
+    video_dma_active = false;
+    capture_armed = false;
+    if (video_dma_chan >= 0) {
+        dma_channel_abort(video_dma_chan);
+    }
+}
+
+// Check if frame is ready
+static inline bool video_capture_frame_ready(void)
+{
+    return video_frame_ready;
+}
+
+// Get the completed frame buffer
+static inline uint8_t* video_capture_get_frame(void)
+{
+    if (video_frame_ready) {
+        video_frame_ready = false;
+        return (uint8_t*)video_completed_frame;
+    }
+    return NULL;
+}
+
+// Reset video capture (for resynchronization)
+static inline void video_capture_reset(PIO pio, uint sm)
+{
+    pio_sm_set_enabled(pio, sm, false);
+    pio_sm_clear_fifos(pio, sm);
+    pio_sm_restart(pio, sm);
+    video_dma_active = false;
+    capture_armed = false;
+    video_frame_ready = false;
+}
+
+%}

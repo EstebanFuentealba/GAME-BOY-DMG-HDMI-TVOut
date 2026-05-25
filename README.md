@@ -66,11 +66,31 @@ The Sharp LR35902 CPU generates raw LCD signals (VSYNC, HSYNC, Pixel Clock, D0â€
 
 ## DIY
 
-- [RP2040 Pi Zero](https://s.click.aliexpress.com/e/_c3eepyXz)
-- [Level shifter 5v - 3v3](https://s.click.aliexpress.com/e/_c3Bf8Tpz)
-- [HDMI Mini to HDMI](https://s.click.aliexpress.com/e/_c2vEa6W7)
-- [GBC Link Cable](https://s.click.aliexpress.com/e/_c3ozYTbh)
-- [PortData EXT Link](https://s.click.aliexpress.com/e/_c4UrJ7iB)
+- [1 x RP2040 Pi Zero]( https://s.click.aliexpress.com/e/_c3eepyXz )
+- [1 x Level shifter 5v - 3v3](https://s.click.aliexpress.com/e/_c3Bf8Tpz)
+- [1 x HDMI Mini to HDMI](https://s.click.aliexpress.com/e/_c2vEa6W7)
+- [1 x GBC Link Cable](https://s.click.aliexpress.com/e/_c3ozYTbh)
+- [2 x PortData EXT Link](https://s.click.aliexpress.com/e/_c4UrJ7iB)
+- [1 x Audio Jack 3.5](https://s.click.aliexpress.com/e/_c3Rsd2jX)
+- [1 x PCB Proto board 3x7](https://s.click.aliexpress.com/e/_c2vo2uS5)
+- [1 x Micro Cable](https://s.click.aliexpress.com/e/_c3w8XLAZ)
+- [1 x Connector Raspberry PI GPIO Female 2X20 2.54](https://s.click.aliexpress.com/e/_c30xKN1n)
+- [1 x Buttons](https://s.click.aliexpress.com/e/_c2IJ9HbF)
+
+## DIY Optional
 - [GAME BOY DMG Shell Replacement](https://s.click.aliexpress.com/e/_c4pZA6Kj)
 - [GAME BOY DMG Glass Light Gray](https://s.click.aliexpress.com/e/_c4oHB3KJ)
-- [Audio Jack 3.5](https://s.click.aliexpress.com/e/_c2RgngHt)
+
+## Anexos
+
+- https://web.archive.org/web/20190319094359/https://lowgain-audio.com/GBclassicmod.htm
+
+
+## Build app
+
+```bash
+export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH
+cd build
+cmake ..
+make -j$(sysctl -n hw.logicalcpu)
+```
