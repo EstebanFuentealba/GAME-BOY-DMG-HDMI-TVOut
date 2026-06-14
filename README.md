@@ -80,12 +80,11 @@ The RP2040 reconstructs the original 160×144 framebuffer in real time and gener
 ## Schematics
 
 <p align="center">
-    <picture>
-        <img
-            alt="Game Boy DMG Schematics"
-            src="./assets/GB-DMG-Schematics.png">
-    </picture>
+
+[![GB-DMG-Schematics](assets/GB-DMG-Schematics.png)](assets/GB-DMG-Schematics.pdf "Document pdf")
+
 </p>
+
 
 ## Game Boy Modification
 
