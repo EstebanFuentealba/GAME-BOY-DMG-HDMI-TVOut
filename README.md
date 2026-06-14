@@ -100,6 +100,22 @@ For easier assembly, the installation uses the ribbon cable connector pads inste
     </picture>
 </p>
 
+## Game Boy Connector Pinout
+
+The image below provides one of the clearest references currently available for the original Game Boy connector pinout and signal locations.
+
+> ⚠️ Always verify signal continuity with a multimeter before soldering, as revisions and board conditions may vary.
+
+<p align="center">
+    <picture>
+        <img
+            alt="Game Boy Connector Pinout"
+            src="./assets/GB-Connector-Pinout.png">
+    </picture>
+</p>
+
+
+
 > [!Important]
 > 
 > **Direct Wiring (Without a Link Cable or External Connectors)**
