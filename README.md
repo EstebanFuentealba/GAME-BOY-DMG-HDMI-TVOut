@@ -100,6 +100,19 @@ For easier assembly, the installation uses the ribbon cable connector pads inste
     </picture>
 </p>
 
+> [!Important]
+> 
+> **Direct Wiring (Without a Link Cable or External Connectors)**
+> 
+> ⚠️ The original Game Boy Link Cable is internally cross-wired.
+> If you connect the devices directly, you must cross the serial lines:
+> | Device A | Device B |
+> |----------|----------|
+> | SI | SO |
+> | SO | SI |
+> Connecting **SI → SI** and **SO → SO** will not work.
+> 💡 To replicate the original Link Cable behavior, always cross the **SI** and **SO** signals.
+
 ## Audio Jack Modification
 
 The Game Boy DMG-001 already provides stereo audio signals on the rear side of the main PCB, making it possible to add a standard 3.5 mm stereo audio jack without modifying the original audio circuitry.
