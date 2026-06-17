@@ -12,6 +12,12 @@ static constexpr uint8_t STATUS_DONE = 6;
 static constexpr uint8_t STATUS_CONNECTION_ERROR = 8;
 static constexpr uint8_t STATUS_TRANSPORT_ERROR = 9;
 
+#define SERVICE_UUID "0000ff00-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_TX "0000ff02-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID_RX "0000ff03-0000-1000-8000-00805f9b34fb"
+#define PRINTER_MAC_ADDRESS "3f:78:0f:5e:07:ef"
+#define USE_MAC_ADDRESS true
+
 #ifndef PRINT_UART_RX_PIN
 #define PRINT_UART_RX_PIN 44
 #endif
@@ -50,6 +56,7 @@ struct PrintJob {
 static const char *PRINTER_NAME_HINTS[] = {"T02", "Phomemo"};
 static BLEAdvertisedDevice *printerDevice = nullptr;
 static BLERemoteCharacteristic *printerWriteChar = nullptr;
+static BLERemoteCharacteristic *printerNotifyChar = nullptr;
 static BLEClient *printerClient = nullptr;
 static PrintJob job;
 
@@ -81,15 +88,19 @@ class PrinterAdvertisedCallbacks : public BLEAdvertisedDeviceCallbacks {
   }
 };
 
-static BLERemoteCharacteristic *findWritableCharacteristic(BLERemoteService *service) {
-  const auto *chars = service->getCharacteristics();
-  for (auto it = chars->begin(); it != chars->end(); ++it) {
-    BLERemoteCharacteristic *ch = it->second;
-    if (ch->canWrite() || ch->canWriteNoResponse()) {
-      return ch;
-    }
+static void printerNotifyCallback(BLERemoteCharacteristic *, uint8_t *, size_t, bool) {
+}
+
+static bool discoverPrinterByName() {
+  if (printerDevice) {
+    return true;
   }
-  return nullptr;
+
+  BLEScan *scan = BLEDevice::getScan();
+  scan->setAdvertisedDeviceCallbacks(new PrinterAdvertisedCallbacks(), true);
+  scan->setActiveScan(true);
+  scan->start(8, false);
+  return printerDevice != nullptr;
 }
 
 static bool connectPrinter() {
@@ -98,37 +109,46 @@ static bool connectPrinter() {
   }
 
   printerWriteChar = nullptr;
+  printerNotifyChar = nullptr;
   if (printerClient) {
     printerClient->disconnect();
     delete printerClient;
     printerClient = nullptr;
   }
 
-  if (!printerDevice) {
-    BLEScan *scan = BLEDevice::getScan();
-    scan->setAdvertisedDeviceCallbacks(new PrinterAdvertisedCallbacks(), true);
-    scan->setActiveScan(true);
-    scan->start(8, false);
-  }
-
-  if (!printerDevice) {
+  if (!USE_MAC_ADDRESS && !discoverPrinterByName()) {
     return false;
   }
 
   printerClient = BLEDevice::createClient();
-  if (!printerClient->connect(printerDevice)) {
+  const bool connected = USE_MAC_ADDRESS
+      ? printerClient->connect(BLEAddress(PRINTER_MAC_ADDRESS))
+      : printerClient->connect(printerDevice);
+  if (!connected) {
+    delete printerClient;
+    printerClient = nullptr;
     return false;
   }
 
-  const auto *services = printerClient->getServices();
-  for (auto it = services->begin(); it != services->end(); ++it) {
-    printerWriteChar = findWritableCharacteristic(it->second);
-    if (printerWriteChar) {
-      return true;
-    }
+  BLERemoteService *service = printerClient->getService(BLEUUID(SERVICE_UUID));
+  if (!service) {
+    printerClient->disconnect();
+    return false;
   }
 
-  return false;
+  printerWriteChar = service->getCharacteristic(BLEUUID(CHARACTERISTIC_UUID_TX));
+  if (!printerWriteChar || !(printerWriteChar->canWrite() || printerWriteChar->canWriteNoResponse())) {
+    printerClient->disconnect();
+    printerWriteChar = nullptr;
+    return false;
+  }
+
+  printerNotifyChar = service->getCharacteristic(BLEUUID(CHARACTERISTIC_UUID_RX));
+  if (printerNotifyChar && printerNotifyChar->canNotify()) {
+    printerNotifyChar->registerForNotify(printerNotifyCallback);
+  }
+
+  return true;
 }
 
 static bool writePrinterBytes(const uint8_t *data, size_t len) {

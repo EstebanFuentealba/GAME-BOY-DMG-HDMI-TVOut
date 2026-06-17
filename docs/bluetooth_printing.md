@@ -54,6 +54,19 @@ El RP2040 imprime por UART de debug estos estados:
 
 El XIAO ESP32S3 responde al RP2040 con un byte compatible con `print_status_t`: `6` completado, `8` error de conexion, `9` error de transporte.
 
+## Configuracion BLE T02
+
+El firmware XIAO ESP32S3 conecta por defecto a la impresora mediante MAC:
+
+| Campo | Valor |
+| --- | --- |
+| MAC | `3f:78:0f:5e:07:ef` |
+| Servicio principal | `0000ff00-0000-1000-8000-00805f9b34fb` |
+| Caracteristica TX / WRITE | `0000ff02-0000-1000-8000-00805f9b34fb` |
+| Caracteristica RX / NOTIFY | `0000ff03-0000-1000-8000-00805f9b34fb` |
+
+Para usar otra impresora, cambia `PRINTER_MAC_ADDRESS` en `apps/esp32_phomemo_bridge/src/main.cpp`. Si prefieres buscar por nombre, cambia `USE_MAC_ADDRESS` a `false`.
+
 ## Builds y flasheo web
 
 El workflow `.github/workflows/build-release.yml` compila dos firmwares:

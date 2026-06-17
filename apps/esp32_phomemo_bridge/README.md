@@ -14,7 +14,16 @@ UART: `921600 8N1`.
 
 ## Transporte Bluetooth
 
-El sketch incluido para XIAO ESP32S3 busca un dispositivo BLE cuyo nombre contenga `T02` o `Phomemo`, toma la primera caracteristica escribible encontrada y envia el raster 1-bit recibido desde el RP2040.
+El sketch incluido para XIAO ESP32S3 conecta por defecto a la impresora por MAC y usa los UUIDs BLE escaneados para la Phomemo T02:
+
+| Campo | Valor |
+| --- | --- |
+| MAC | `3f:78:0f:5e:07:ef` |
+| Servicio | `0000ff00-0000-1000-8000-00805f9b34fb` |
+| TX / WRITE | `0000ff02-0000-1000-8000-00805f9b34fb` |
+| RX / NOTIFY | `0000ff03-0000-1000-8000-00805f9b34fb` |
+
+La opcion `USE_MAC_ADDRESS` esta activa en `src/main.cpp`. Si quieres buscar por nombre en vez de conectar directo por MAC, cambiala a `false`.
 
 La funcion `sendPhomemoRaster()` esta separada porque Phomemo no publica una especificacion oficial del protocolo T02 y algunos firmwares usan dialectos propietarios. La secuencia de comandos incluida esta basada en `iamjackg/esp32-phomemo-gameboy-printer`, que a su vez acredita el protocolo reverse engineered de `vivier/phomemo-tools`.
 
@@ -22,6 +31,8 @@ Importante: `iamjackg/esp32-phomemo-gameboy-printer` usa `BluetoothSerial`, es d
 
 Si tu T02 requiere UUIDs o comandos propietarios, ajusta:
 
-- `PRINTER_NAME_HINTS`
-- `findWritableCharacteristic()`
+- `SERVICE_UUID`
+- `CHARACTERISTIC_UUID_TX`
+- `CHARACTERISTIC_UUID_RX`
+- `PRINTER_MAC_ADDRESS`
 - `sendPhomemoRaster()`
