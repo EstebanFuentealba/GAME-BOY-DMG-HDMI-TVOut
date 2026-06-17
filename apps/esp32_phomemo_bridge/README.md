@@ -12,6 +12,16 @@ Firmware de referencia para el coprocesador Seeed Studio XIAO ESP32S3 usado por 
 
 UART: `921600 8N1`.
 
+## Logs
+
+El firmware imprime logs por USB CDC a `115200` baudios. Para verlos con PlatformIO:
+
+```bash
+pio device monitor -d apps/esp32_phomemo_bridge -b 115200
+```
+
+Los logs muestran arranque, configuracion UART/BLE, conexion a la impresora, paquetes recibidos desde el RP2040, progreso de impresion, finalizacion y errores.
+
 ## Transporte Bluetooth
 
 El sketch incluido para XIAO ESP32S3 conecta por defecto a la impresora por MAC y usa los UUIDs BLE escaneados para la Phomemo T02:
