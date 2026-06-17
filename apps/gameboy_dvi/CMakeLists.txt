@@ -4,6 +4,7 @@
 
 add_executable(gameboy_dvi
 	main.c
+	print_bridge.c
 )
 
 pico_generate_pio_header(gameboy_dvi ${CMAKE_CURRENT_LIST_DIR}/video_capture.pio)
@@ -23,6 +24,7 @@ target_link_libraries(gameboy_dvi
 	hardware_dma
 	hardware_gpio
 	hardware_irq
+	hardware_uart
 	hardware_vreg
 )
 

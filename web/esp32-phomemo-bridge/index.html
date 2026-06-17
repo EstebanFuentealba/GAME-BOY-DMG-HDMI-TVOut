@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GAME BOY HDMI TVOut - Web Flasher</title>
+    <meta name="description" content="Instalador web para grabar el RP2040 y el ESP32-C3 Phomemo Bridge.">
+    <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f7f2;
+        --ink: #17201b;
+        --muted: #5d665f;
+        --panel: #ffffff;
+        --line: #cfd6cd;
+        --accent: #1d6f5c;
+        --accent-ink: #ffffff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111512;
+          --ink: #edf2ea;
+          --muted: #aab3aa;
+          --panel: #1b211d;
+          --line: #354036;
+          --accent: #65c3a9;
+          --accent-ink: #0b1712;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(760px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 56px 0;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(2rem, 6vw, 4rem);
+        line-height: 1;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 1rem;
+      }
+
+      .panel {
+        margin-top: 32px;
+        padding: 24px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      esp-web-install-button {
+        display: block;
+        margin: 24px 0 0;
+      }
+
+      h2 {
+        margin: 0 0 10px;
+        font-size: 1.35rem;
+        letter-spacing: 0;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      button,
+      .button {
+        appearance: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 18px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font: inherit;
+        font-weight: 650;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .button.secondary {
+        background: transparent;
+        color: var(--accent);
+      }
+
+      .status {
+        min-height: 24px;
+        margin-top: 16px;
+        font-size: 0.95rem;
+      }
+
+      ul {
+        margin: 20px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+      }
+
+      a {
+        color: var(--accent);
+      }
+
+      code {
+        font: 0.95em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Firmwares</h1>
+      <p>Instala el firmware del Game Boy HDMI TVOut y del puente Bluetooth para imprimir capturas en una Phomemo T02.</p>
+
+      <section class="panel" aria-label="Instalador RP2040">
+        <h2>RP2040 HDMI TVOut</h2>
+        <p>Conecta el RP2040 manteniendo presionado BOOTSEL. Cuando aparezca la unidad <code>RPI-RP2</code>, usa el instalador UF2.</p>
+        <div class="actions">
+          <button id="rp2040-install" type="button">Instalar UF2 en RPI-RP2</button>
+          <a class="button secondary" href="firmware/gameboy_dvi.uf2" download>Descargar UF2</a>
+        </div>
+        <p class="status" id="rp2040-status"></p>
+        <ul>
+          <li>Funciona en Chrome o Edge con soporte File System Access.</li>
+          <li>Si el navegador no permite escribir la unidad, descarga el UF2 y copialo manualmente a <code>RPI-RP2</code>.</li>
+        </ul>
+      </section>
+
+      <section class="panel" aria-label="Instalador ESP32-C3">
+        <h2>ESP32-C3 Phomemo Bridge</h2>
+        <p>Conecta el ESP32-C3 por USB, ponlo en modo bootloader si tu placa lo requiere y presiona instalar.</p>
+        <esp-web-install-button manifest="manifest.json">
+          <button slot="activate">Instalar firmware</button>
+          <span slot="unsupported">
+            Este navegador no soporta Web Serial. Usa Chrome o Edge en escritorio.
+          </span>
+        </esp-web-install-button>
+        <ul>
+          <li>Chip esperado: <code>ESP32-C3</code>.</li>
+          <li>La página debe abrirse desde GitHub Pages o un origen HTTPS.</li>
+          <li>El manifest y los binarios se publican automáticamente desde GitHub Actions.</li>
+        </ul>
+      </section>
+    </main>
+    <script>
+      const rp2040Button = document.querySelector("#rp2040-install");
+      const rp2040Status = document.querySelector("#rp2040-status");
+
+      function setRp2040Status(message) {
+        rp2040Status.textContent = message;
+      }
+
+      async function installRp2040Uf2() {
+        if (!("showDirectoryPicker" in window)) {
+          setRp2040Status("Este navegador no permite escribir UF2 directo. Usa Descargar UF2 y copialo a RPI-RP2.");
+          return;
+        }
+
+        try {
+          setRp2040Status("Descargando firmware...");
+          const response = await fetch("firmware/gameboy_dvi.uf2", { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error("No se pudo descargar gameboy_dvi.uf2");
+          }
+          const firmware = await response.blob();
+
+          setRp2040Status("Selecciona la unidad RPI-RP2.");
+          const directory = await window.showDirectoryPicker({ mode: "readwrite" });
+          if (directory.name && directory.name !== "RPI-RP2") {
+            const ok = window.confirm(`Seleccionaste "${directory.name}". El RP2040 normalmente aparece como "RPI-RP2". ¿Continuar?`);
+            if (!ok) {
+              setRp2040Status("Instalación cancelada.");
+              return;
+            }
+          }
+
+          setRp2040Status("Escribiendo UF2...");
+          const file = await directory.getFileHandle("gameboy_dvi.uf2", { create: true });
+          const writable = await file.createWritable();
+          await writable.write(firmware);
+          await writable.close();
+          setRp2040Status("UF2 copiado. El RP2040 debería reiniciarse automáticamente.");
+        } catch (error) {
+          if (error && error.name === "AbortError") {
+            setRp2040Status("Instalación cancelada.");
+          } else {
+            setRp2040Status(`No se pudo instalar: ${error.message || error}`);
+          }
+        }
+      }
+
+      rp2040Button.addEventListener("click", installRp2040Uf2);
+    </script>
+  </body>
+</html>

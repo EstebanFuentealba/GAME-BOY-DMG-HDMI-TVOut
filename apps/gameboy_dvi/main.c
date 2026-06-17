@@ -17,6 +17,7 @@
 #include "video_defs.h"
 #include "colors.h"
 #include "splash.h"
+#include "print_bridge.h"
 
 #define FRAME_WIDTH 320
 #define FRAME_HEIGHT 240
@@ -107,6 +108,8 @@ int main() {
     gpio_set_dir(PALETTE_BTN_PIN, GPIO_IN);
     gpio_pull_up(PALETTE_BTN_PIN);
 
+    print_bridge_init();
+
     // Initial test pattern for the first frame
     for (int i = 0; i < PACKED_FRAME_SIZE; i++) {
         packed_buffer_0[i] = 0b11100100;
@@ -140,6 +143,8 @@ int main() {
     int palette_idx = 0;
     bool last_pal_btn_state = true;
     int pal_debounce_counter = 0;
+    bool last_print_btn_state = true;
+    int print_debounce_counter = 0;
 
     uint32_t last_frame_count = 0;
     int no_signal_counter = NO_SIGNAL_TIMEOUT;
@@ -166,6 +171,15 @@ int main() {
         last_pal_btn_state = pal_btn_state;
         if (pal_debounce_counter > 0) pal_debounce_counter--;
 
+        bool print_btn_state = gpio_get(PRINT_BUTTON_PIN);
+        if (!print_btn_state && last_print_btn_state && print_debounce_counter <= 0) {
+            if (no_signal_counter < NO_SIGNAL_TIMEOUT)
+                print_bridge_enqueue_frame((const uint8_t *)packed_display_ptr);
+            print_debounce_counter = 20;
+        }
+        last_print_btn_state = print_btn_state;
+        if (print_debounce_counter > 0) print_debounce_counter--;
+
         // --- Signal detection ---
         uint32_t fc = video_capture_get_frame_count();
         if (fc != last_frame_count) {
@@ -185,6 +199,8 @@ int main() {
             packed_display_ptr = (volatile uint8_t *)completed;
             __dmb();
         }
+
+        print_bridge_task();
 
         // Single volatile read — use splash when no GB signal
         const uint8_t *const frame = (no_signal_counter >= NO_SIGNAL_TIMEOUT)

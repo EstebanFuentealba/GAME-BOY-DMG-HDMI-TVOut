@@ -1,4 +1,4 @@
-name: Build gameboy_dvi UF2
+name: Build firmware and web flasher
 
 on:
   push:
@@ -13,13 +13,17 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-release:
-    name: Build and publish UF2
+    name: Build and publish firmware
     runs-on: ubuntu-latest
     env:
       PICO_SDK_VERSION: 1.5.1
+      ESP32_BRIDGE_ENV: esp32-c3-devkitm-1
+      ESP32_BRIDGE_DIR: apps/esp32_phomemo_bridge
 
     steps:
       - name: Check out repository
@@ -34,6 +38,9 @@ jobs:
             gcc-arm-none-eabi \
             libnewlib-arm-none-eabi
 
+      - name: Install PlatformIO
+        run: python3 -m pip install --user platformio
+
       - name: Fetch Pico SDK
         run: |
           git clone --depth 1 --branch "$PICO_SDK_VERSION" https://github.com/raspberrypi/pico-sdk.git "$RUNNER_TEMP/pico-sdk"
@@ -45,15 +52,21 @@ jobs:
       - name: Build gameboy_dvi
         run: cmake --build build --target gameboy_dvi --parallel
 
-      - name: Prepare release asset
-        run: cp build/apps/gameboy_dvi/gameboy_dvi.uf2 gameboy_dvi.uf2
+      - name: Build ESP32-C3 Phomemo bridge
+        run: python3 -m platformio run -d "$ESP32_BRIDGE_DIR" -e "$ESP32_BRIDGE_ENV"
 
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gameboy_dvi.uf2
-          path: gameboy_dvi.uf2
-          if-no-files-found: error
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          cp build/apps/gameboy_dvi/gameboy_dvi.uf2 release-assets/gameboy_dvi.uf2
+
+          esp_build="$ESP32_BRIDGE_DIR/.pio/build/$ESP32_BRIDGE_ENV"
+          cp "$esp_build/bootloader.bin" release-assets/esp32_phomemo_bridge_bootloader.bin
+          cp "$esp_build/partitions.bin" release-assets/esp32_phomemo_bridge_partitions.bin
+          cp "$esp_build/firmware.bin" release-assets/esp32_phomemo_bridge_firmware.bin
+          if [ -f "$esp_build/boot_app0.bin" ]; then
+            cp "$esp_build/boot_app0.bin" release-assets/esp32_phomemo_bridge_boot_app0.bin
+          fi
 
       - name: Resolve release tag
         id: release
@@ -69,7 +82,62 @@ jobs:
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Publish gameboy_dvi.uf2 to release
+      - name: Prepare ESP Web Tools site
+        run: |
+          mkdir -p site/firmware
+          cp -R web/esp32-phomemo-bridge/. site/
+          cp release-assets/gameboy_dvi.uf2 site/firmware/gameboy_dvi.uf2
+          cp release-assets/esp32_phomemo_bridge_bootloader.bin site/firmware/bootloader.bin
+          cp release-assets/esp32_phomemo_bridge_partitions.bin site/firmware/partitions.bin
+          cp release-assets/esp32_phomemo_bridge_firmware.bin site/firmware/firmware.bin
+          if [ -f release-assets/esp32_phomemo_bridge_boot_app0.bin ]; then
+            cp release-assets/esp32_phomemo_bridge_boot_app0.bin site/firmware/boot_app0.bin
+          fi
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          firmware = Path("site/firmware")
+          parts = [
+              {"path": "firmware/bootloader.bin", "offset": 0},
+              {"path": "firmware/partitions.bin", "offset": 0x8000},
+          ]
+          if (firmware / "boot_app0.bin").exists():
+              parts.append({"path": "firmware/boot_app0.bin", "offset": 0xE000})
+          parts.append({"path": "firmware/firmware.bin", "offset": 0x10000})
+
+          manifest = {
+              "name": "Game Boy HDMI TVOut - ESP32-C3 Phomemo Bridge",
+              "version": "${{ steps.release.outputs.tag }}",
+              "new_install_prompt_erase": True,
+              "builds": [
+                  {
+                      "chipFamily": "ESP32-C3",
+                      "parts": parts,
+                  }
+              ],
+          }
+          Path("site/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          Path("release-assets/esp32_phomemo_bridge_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Publish firmware files to release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -78,6 +146,9 @@ jobs:
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_TAG" \
-              --notes "Automated gameboy_dvi UF2 build."
+              --notes "Automated Game Boy HDMI TVOut and ESP32-C3 Phomemo bridge firmware build."
           fi
-          gh release upload "$RELEASE_TAG" gameboy_dvi.uf2 --clobber
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+
+      - name: Deploy ESP Web Tools page
+        uses: actions/deploy-pages@v4
