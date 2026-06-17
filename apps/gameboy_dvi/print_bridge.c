@@ -6,6 +6,7 @@
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
 #include "pico/time.h"
+#include "print_frame_jp.h"
 
 #define PRINT_QUEUE_DEPTH 2
 #define PRINT_PACKET_MAGIC 0x52504247u /* GBPR, little endian on UART */
@@ -101,6 +102,33 @@ static int pixel_luma(const uint8_t *packed_frame, int x, int y)
     return 255 - (int)shade * 85;
 }
 
+static bool frame_bit(const uint8_t *bits, int x, int y)
+{
+    const uint bit_idx = (uint)(y * PRINT_FRAME_JP_WIDTH + x);
+    return (bits[bit_idx >> 3] & (uint8_t)(0x80u >> (bit_idx & 7))) != 0;
+}
+
+static int framed_pixel_luma(const uint8_t *packed_frame, int print_x, int print_y)
+{
+    const int frame_x = (print_x * PRINT_FRAME_JP_WIDTH) / PRINT_WIDTH_DOTS;
+    const int frame_y = (print_y * PRINT_FRAME_JP_HEIGHT) / PRINT_HEIGHT_DOTS;
+
+    if (frame_bit(print_frame_jp_mask, frame_x, frame_y))
+        return frame_bit(print_frame_jp_ink, frame_x, frame_y) ? 0 : 255;
+
+    const int image_x = frame_x - PRINT_FRAME_JP_IMAGE_X;
+    const int image_y = frame_y - PRINT_FRAME_JP_IMAGE_Y;
+    int src_x = (image_x * DMG_PIXELS_X) / PRINT_FRAME_JP_IMAGE_WIDTH;
+    int src_y = (image_y * DMG_PIXELS_Y) / PRINT_FRAME_JP_IMAGE_HEIGHT;
+
+    if (src_x < 0) src_x = 0;
+    if (src_y < 0) src_y = 0;
+    if (src_x >= DMG_PIXELS_X) src_x = DMG_PIXELS_X - 1;
+    if (src_y >= DMG_PIXELS_Y) src_y = DMG_PIXELS_Y - 1;
+
+    return pixel_luma(packed_frame, src_x, src_y);
+}
+
 static void prepare_print_raster_begin(void)
 {
     memset(print_raster, 0, sizeof(print_raster));
@@ -116,12 +144,10 @@ static bool prepare_print_raster_step(const uint8_t *packed_frame)
         : prepare_y + PRINT_PREPARE_ROWS_PER_TASK;
 
     for (int y = prepare_y; y < y_end; ++y) {
-        const int src_y = (y * DMG_PIXELS_Y) / PRINT_HEIGHT_DOTS;
         uint8_t *dst_row = print_raster + y * PRINT_BYTES_PER_ROW;
 
         for (int x = 0; x < PRINT_WIDTH_DOTS; ++x) {
-            const int src_x = (x * DMG_PIXELS_X) / PRINT_WIDTH_DOTS;
-            int old_pixel = pixel_luma(packed_frame, src_x, src_y) + dither_err_curr[x + 1] / 16;
+            int old_pixel = framed_pixel_luma(packed_frame, x, y) + dither_err_curr[x + 1] / 16;
             if (old_pixel < 0)
                 old_pixel = 0;
             else if (old_pixel > 255)

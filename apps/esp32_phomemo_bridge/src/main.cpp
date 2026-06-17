@@ -332,7 +332,7 @@ static bool sendPhomemoRaster(const PrintJob &j) {
     yield();
   }
 
-  const uint8_t feedCmd[] = {0x1b, 0x64, 0x08};
+  const uint8_t feedCmd[] = {0x1b, 0x64, 0x18};
   logf("PRINT feed paper");
   if (!writePrinterBytes(feedCmd, sizeof(feedCmd))) {
     logf("ERROR print feed write failed");
