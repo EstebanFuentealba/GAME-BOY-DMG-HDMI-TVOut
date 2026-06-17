@@ -270,7 +270,6 @@ static void handlePacket(const PacketHeader &hdr, const uint8_t *payload) {
 }
 
 void setup() {
-  Serial.begin(115200);
   Serial1.begin(UART_BAUD, SERIAL_8N1, 20, 21);
   BLEDevice::init("GB-DMG-Printer-Bridge");
 }
