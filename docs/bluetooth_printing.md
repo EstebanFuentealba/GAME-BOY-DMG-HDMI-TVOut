@@ -88,6 +88,6 @@ Phomemo no publica una especificacion oficial estable para la T02. El firmware X
 
 La secuencia T02 implementada esta basada en `iamjackg/esp32-phomemo-gameboy-printer`: inicializa la impresora, centra la imagen, envia bloques raster `GS v 0` de dos lineas y termina con comandos `1f 11`. Ese proyecto acredita el protocolo reverse engineered de `vivier/phomemo-tools`.
 
-Al finalizar, el XIAO ESP32S3 envia un avance extra de papel para dejar margen de corte.
+Al finalizar, el XIAO ESP32S3 envia filas raster en blanco para forzar un avance extra de papel y dejar margen de corte.
 
 Hay una diferencia de hardware importante: el proyecto de referencia usa `BluetoothSerial`, o sea Bluetooth clasico/RFCOMM. El ESP32S3 solo soporta BLE. Si tu T02 no expone un servicio BLE escribible compatible y solo funciona por RFCOMM, el puente debe moverse a un ESP32 con Bluetooth clasico, por ejemplo ESP32-WROOM-32.

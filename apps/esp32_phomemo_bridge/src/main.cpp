@@ -248,6 +248,37 @@ static bool writePrinterBytes(const uint8_t *data, size_t len) {
   return true;
 }
 
+static bool feedBlankRasterRows(uint16_t bytesPerRow, uint16_t rows) {
+  uint8_t blankRow[64] = {0};
+  if (bytesPerRow > sizeof(blankRow)) {
+    logf("ERROR feed bytesPerRow too large: %u", bytesPerRow);
+    return false;
+  }
+
+  while (rows) {
+    const uint16_t blockRows = rows > 32 ? 32 : rows;
+    const uint8_t blockHeader[] = {
+        0x1d, 0x76, 0x30, 0x00,
+        static_cast<uint8_t>(bytesPerRow & 0xff),
+        static_cast<uint8_t>(bytesPerRow >> 8),
+        static_cast<uint8_t>(blockRows & 0xff),
+        static_cast<uint8_t>(blockRows >> 8),
+    };
+
+    if (!writePrinterBytes(blockHeader, sizeof(blockHeader))) {
+      return false;
+    }
+    for (uint16_t y = 0; y < blockRows; ++y) {
+      if (!writePrinterBytes(blankRow, bytesPerRow)) {
+        return false;
+      }
+    }
+    rows -= blockRows;
+  }
+
+  return true;
+}
+
 static bool sendPhomemoRaster(const PrintJob &j) {
   if (!j.raster || !j.width || !j.height || j.receivedBytes != j.expectedBytes) {
     logf("ERROR print job invalid: raster=%p width=%u height=%u received=%lu expected=%lu",
@@ -332,10 +363,9 @@ static bool sendPhomemoRaster(const PrintJob &j) {
     yield();
   }
 
-  const uint8_t feedCmd[] = {0x1b, 0x64, 0x18};
-  logf("PRINT feed paper");
-  if (!writePrinterBytes(feedCmd, sizeof(feedCmd))) {
-    logf("ERROR print feed write failed");
+  logf("PRINT feed paper with blank raster rows");
+  if (!feedBlankRasterRows(j.bytesPerRow, 96)) {
+    logf("ERROR print blank raster feed failed");
     return false;
   }
 
