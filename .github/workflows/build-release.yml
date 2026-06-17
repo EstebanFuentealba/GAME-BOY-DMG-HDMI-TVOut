@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PICO_SDK_VERSION: 1.5.1
-      ESP32_BRIDGE_ENV: esp32-c3-devkitm-1
+      ESP32_BRIDGE_ENV: seeed_xiao_esp32s3
       ESP32_BRIDGE_DIR: apps/esp32_phomemo_bridge
 
     steps:
@@ -52,7 +52,7 @@ jobs:
       - name: Build gameboy_dvi
         run: cmake --build build --target gameboy_dvi --parallel
 
-      - name: Build ESP32-C3 Phomemo bridge
+      - name: Build XIAO ESP32S3 Phomemo bridge
         run: python3 -m platformio run -d "$ESP32_BRIDGE_DIR" -e "$ESP32_BRIDGE_ENV"
 
       - name: Prepare release assets
@@ -108,12 +108,12 @@ jobs:
           parts.append({"path": "firmware/firmware.bin", "offset": 0x10000})
 
           manifest = {
-              "name": "Game Boy HDMI TVOut - ESP32-C3 Phomemo Bridge",
+              "name": "Game Boy HDMI TVOut - XIAO ESP32S3 Phomemo Bridge",
               "version": "${{ steps.release.outputs.tag }}",
               "new_install_prompt_erase": True,
               "builds": [
                   {
-                      "chipFamily": "ESP32-C3",
+                      "chipFamily": "ESP32-S3",
                       "parts": parts,
                   }
               ],
@@ -146,7 +146,7 @@ jobs:
             gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
               --title "$RELEASE_TAG" \
-              --notes "Automated Game Boy HDMI TVOut and ESP32-C3 Phomemo bridge firmware build."
+              --notes "Automated Game Boy HDMI TVOut and XIAO ESP32S3 Phomemo bridge firmware build."
           fi
           gh release upload "$RELEASE_TAG" release-assets/* --clobber
 

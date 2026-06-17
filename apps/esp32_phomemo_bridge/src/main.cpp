@@ -12,6 +12,14 @@ static constexpr uint8_t STATUS_DONE = 6;
 static constexpr uint8_t STATUS_CONNECTION_ERROR = 8;
 static constexpr uint8_t STATUS_TRANSPORT_ERROR = 9;
 
+#ifndef PRINT_UART_RX_PIN
+#define PRINT_UART_RX_PIN 44
+#endif
+
+#ifndef PRINT_UART_TX_PIN
+#define PRINT_UART_TX_PIN 43
+#endif
+
 enum PacketType : uint8_t {
   PKT_START = 1,
   PKT_DATA = 2,
@@ -270,7 +278,7 @@ static void handlePacket(const PacketHeader &hdr, const uint8_t *payload) {
 }
 
 void setup() {
-  Serial1.begin(UART_BAUD, SERIAL_8N1, 20, 21);
+  Serial1.begin(UART_BAUD, SERIAL_8N1, PRINT_UART_RX_PIN, PRINT_UART_TX_PIN);
   BLEDevice::init("GB-DMG-Printer-Bridge");
 }
 

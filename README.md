@@ -31,7 +31,7 @@ The RP2040 reconstructs the original 160×144 framebuffer in real time and gener
 - No emulation — video is generated directly from the original hardware signals
 - Compact installation inside the original Game Boy shell
 - Low-cost and widely available components
-- Optional one-button thermal printing through an ESP32-C3 BLE bridge and a Phomemo T02
+- Optional one-button thermal printing through a Seeed Studio XIAO ESP32S3 BLE bridge and a Phomemo T02
 
 ## Hardware Requirements
 
@@ -193,7 +193,7 @@ GND         -----------------> Sleeve (Ground)
 
 - [Game Boy DMG Replacement Shell](https://s.click.aliexpress.com/e/_c4pZA6Kj)
 - [Game Boy DMG Glass Lens (Light Gray)](https://s.click.aliexpress.com/e/_c4oHB3KJ)
-- ESP32-C3 module for BLE printing
+- Seeed Studio XIAO ESP32S3 module for BLE printing
 - Phomemo T02 thermal printer
 
 
@@ -239,11 +239,11 @@ No additional software or drivers are required.
 
 ## Bluetooth Thermal Printing
 
-The firmware includes an optional print path for a Phomemo T02 thermal printer. A push button on RP2040 `GPIO 7` captures the current Game Boy framebuffer, converts it to a `384` dot-wide 1-bit dithered raster, and streams it over UART1 (`GPIO 8` TX, `GPIO 9` RX, `921600 8N1`) to an ESP32-C3 BLE bridge.
+The firmware includes an optional print path for a Phomemo T02 thermal printer. A push button on RP2040 `GPIO 7` captures the current Game Boy framebuffer, converts it to a `384` dot-wide 1-bit dithered raster, and streams it over UART1 (`GPIO 8` TX, `GPIO 9` RX, `921600 8N1`) to a Seeed Studio XIAO ESP32S3 BLE bridge.
 
 The T02 command sequence is based on [iamjackg/esp32-phomemo-gameboy-printer](https://github.com/iamjackg/esp32-phomemo-gameboy-printer). That reference project uses Bluetooth Classic/RFCOMM (`BluetoothSerial`), so use an ESP32 with Bluetooth Classic if your T02 does not expose a compatible BLE write characteristic.
 
-See [docs/bluetooth_printing.md](docs/bluetooth_printing.md) and the ESP32-C3 reference firmware in [apps/esp32_phomemo_bridge](apps/esp32_phomemo_bridge).
+See [docs/bluetooth_printing.md](docs/bluetooth_printing.md) and the XIAO ESP32S3 reference firmware in [apps/esp32_phomemo_bridge](apps/esp32_phomemo_bridge).
 
 
 ## Building the Firmware

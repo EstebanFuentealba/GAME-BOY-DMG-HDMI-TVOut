@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GAME BOY HDMI TVOut - Web Flasher</title>
-    <meta name="description" content="Instalador web para grabar el RP2040 y el ESP32-C3 Phomemo Bridge.">
+    <meta name="description" content="Instalador web para grabar el RP2040 y el XIAO ESP32S3 Phomemo Bridge.">
     <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
     <style>
       :root {
@@ -135,7 +135,7 @@
   <body>
     <main>
       <h1>Firmwares</h1>
-      <p>Instala el firmware del Game Boy HDMI TVOut y del puente Bluetooth para imprimir capturas en una Phomemo T02.</p>
+      <p>Instala el firmware del Game Boy HDMI TVOut y del puente Bluetooth XIAO ESP32S3 para imprimir capturas en una Phomemo T02.</p>
 
       <section class="panel" aria-label="Instalador RP2040">
         <h2>RP2040 HDMI TVOut</h2>
@@ -151,9 +151,9 @@
         </ul>
       </section>
 
-      <section class="panel" aria-label="Instalador ESP32-C3">
-        <h2>ESP32-C3 Phomemo Bridge</h2>
-        <p>Conecta el ESP32-C3 por USB, ponlo en modo bootloader si tu placa lo requiere y presiona instalar.</p>
+      <section class="panel" aria-label="Instalador XIAO ESP32S3">
+        <h2>XIAO ESP32S3 Phomemo Bridge</h2>
+        <p>Conecta el XIAO ESP32S3 por USB, ponlo en modo bootloader si tu placa lo requiere y presiona instalar.</p>
         <esp-web-install-button manifest="manifest.json">
           <button slot="activate">Instalar firmware</button>
           <span slot="unsupported">
@@ -161,7 +161,7 @@
           </span>
         </esp-web-install-button>
         <ul>
-          <li>Chip esperado: <code>ESP32-C3</code>.</li>
+          <li>Chip esperado: <code>ESP32-S3</code>.</li>
           <li>La página debe abrirse desde GitHub Pages o un origen HTTPS.</li>
           <li>El manifest y los binarios se publican automáticamente desde GitHub Actions.</li>
         </ul>
