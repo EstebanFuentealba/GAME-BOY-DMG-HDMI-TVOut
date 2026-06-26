@@ -12,6 +12,8 @@ static constexpr size_t MAX_PAYLOAD = 256;
 static constexpr uint8_t STATUS_DONE = 6;
 static constexpr uint8_t STATUS_CONNECTION_ERROR = 8;
 static constexpr uint8_t STATUS_TRANSPORT_ERROR = 9;
+static constexpr uint8_t STATUS_PRINTER_CONNECTED = 10;
+static constexpr uint8_t STATUS_PRINTER_DISCONNECTED = 11;
 static constexpr uint32_t LOG_BAUD = 115200;
 static constexpr size_t PRINTER_BLE_CHUNK_SIZE = 20;
 static constexpr uint32_t PRINTER_BLE_CHUNK_DELAY_US = 800;
@@ -20,7 +22,7 @@ static constexpr uint32_t PRINTER_BLE_CHUNK_DELAY_US = 800;
 #define CHARACTERISTIC_UUID_TX "0000ff02-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_RX "0000ff03-0000-1000-8000-00805f9b34fb"
 #define PRINTER_MAC_ADDRESS "3f:78:0f:5e:07:ef"
-#define USE_MAC_ADDRESS true
+#define USE_MAC_ADDRESS false
 
 #ifndef PRINT_UART_RX_PIN
 #define PRINT_UART_RX_PIN 44
@@ -76,6 +78,10 @@ static void logf(const char *fmt, ...) {
   Serial.printf("[%10lu ms] %s\n", millis(), message);
 }
 
+static void sendRp2040Status(uint8_t status) {
+  Serial1.write(status);
+}
+
 static uint16_t crc16CcittUpdate(uint16_t crc, const uint8_t *data, size_t len) {
   while (len--) {
     crc ^= static_cast<uint16_t>(*data++) << 8;
@@ -122,6 +128,7 @@ class PrinterClientCallbacks : public BLEClientCallbacks {
     printerConnected = false;
     printerWriteChar = nullptr;
     printerNotifyChar = nullptr;
+    sendRp2040Status(STATUS_PRINTER_DISCONNECTED);
     logf("BLE client callback: disconnected");
   }
 };
@@ -183,6 +190,7 @@ static bool connectPrinter() {
   const bool connected = printerClient->connect(printerDevice);
   if (!connected) {
     logf("ERROR BLE connect failed");
+    sendRp2040Status(STATUS_PRINTER_DISCONNECTED);
     delete printerClient;
     printerClient = nullptr;
     return false;
@@ -196,6 +204,7 @@ static bool connectPrinter() {
   BLERemoteService *service = printerClient->getService(BLEUUID(SERVICE_UUID));
   if (!service) {
     logf("ERROR BLE service not found: %s", SERVICE_UUID);
+    sendRp2040Status(STATUS_PRINTER_DISCONNECTED);
     printerClient->disconnect();
     return false;
   }
@@ -204,6 +213,7 @@ static bool connectPrinter() {
   printerWriteChar = service->getCharacteristic(BLEUUID(CHARACTERISTIC_UUID_TX));
   if (!printerWriteChar || !(printerWriteChar->canWrite() || printerWriteChar->canWriteNoResponse())) {
     logf("ERROR BLE TX characteristic missing/not writable: %s", CHARACTERISTIC_UUID_TX);
+    sendRp2040Status(STATUS_PRINTER_DISCONNECTED);
     printerClient->disconnect();
     printerWriteChar = nullptr;
     return false;
@@ -223,6 +233,7 @@ static bool connectPrinter() {
     logf("BLE RX notify characteristic not found: %s", CHARACTERISTIC_UUID_RX);
   }
 
+  sendRp2040Status(STATUS_PRINTER_CONNECTED);
   return true;
 }
 

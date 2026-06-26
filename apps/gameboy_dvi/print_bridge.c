@@ -5,6 +5,7 @@
 
 #include "hardware/gpio.h"
 #include "hardware/sync.h"
+#include "hardware/watchdog.h"
 #include "pico/time.h"
 #include "print_frame_jp.h"
 
@@ -13,6 +14,7 @@
 #define PRINT_PACKET_VERSION 1
 #define PRINT_DATA_CHUNK_SIZE 64
 #define PRINT_FRAME_FLAG_DITHER 0x01
+#define PRINT_FRAME_FLAG_FRAME 0x02
 #define PRINT_PREPARE_ROWS_PER_TASK 8
 #define PRINT_STATUS_POLL_INTERVAL_US 50000
 #define PRINT_JOB_TIMEOUT_US 15000000
@@ -62,6 +64,10 @@ static uint32_t raster_offset;
 static uint64_t job_started_at;
 static uint64_t last_status_poll_at;
 static int prepare_y;
+static bool active_frame_enabled;
+static bool printer_connected;
+static bool last_reset_switch_state = true;
+static int reset_debounce_counter;
 static int16_t dither_err_curr[PRINT_WIDTH_DOTS + 2];
 static int16_t dither_err_next[PRINT_WIDTH_DOTS + 2];
 
@@ -129,6 +135,16 @@ static int framed_pixel_luma(const uint8_t *packed_frame, int print_x, int print
     return pixel_luma(packed_frame, src_x, src_y);
 }
 
+static int print_pixel_luma(const uint8_t *packed_frame, int print_x, int print_y)
+{
+    if (active_frame_enabled)
+        return framed_pixel_luma(packed_frame, print_x, print_y);
+
+    const int src_x = (print_x * DMG_PIXELS_X) / PRINT_WIDTH_DOTS;
+    const int src_y = (print_y * DMG_PIXELS_Y) / PRINT_HEIGHT_DOTS;
+    return pixel_luma(packed_frame, src_x, src_y);
+}
+
 static void prepare_print_raster_begin(void)
 {
     memset(print_raster, 0, sizeof(print_raster));
@@ -147,7 +163,7 @@ static bool prepare_print_raster_step(const uint8_t *packed_frame)
         uint8_t *dst_row = print_raster + y * PRINT_BYTES_PER_ROW;
 
         for (int x = 0; x < PRINT_WIDTH_DOTS; ++x) {
-            int old_pixel = framed_pixel_luma(packed_frame, x, y) + dither_err_curr[x + 1] / 16;
+            int old_pixel = print_pixel_luma(packed_frame, x, y) + dither_err_curr[x + 1] / 16;
             if (old_pixel < 0)
                 old_pixel = 0;
             else if (old_pixel > 255)
@@ -199,6 +215,63 @@ static void set_status(print_status_t next)
     printf("Print: %s\n", print_bridge_status_name(next));
 }
 
+static void set_printer_connected(bool connected)
+{
+    if (printer_connected == connected)
+        return;
+
+    printer_connected = connected;
+    gpio_put(PRINT_CONNECTED_LED_PIN, connected);
+    printf("Print: printer %s\n", connected ? "connected" : "disconnected");
+}
+
+static void print_bridge_poll_remote_status(void)
+{
+    while (uart_is_readable(PRINT_UART_ID)) {
+        const uint8_t remote = uart_getc(PRINT_UART_ID);
+        if (remote == PRINT_STATUS_PRINTER_CONNECTED) {
+            set_printer_connected(true);
+            continue;
+        }
+        if (remote == PRINT_STATUS_PRINTER_DISCONNECTED) {
+            set_printer_connected(false);
+            continue;
+        }
+        if (work_state == WORK_WAIT_REMOTE) {
+            if (remote == PRINT_STATUS_DONE) {
+                ++completed_jobs;
+                work_state = WORK_IDLE;
+                set_status(PRINT_STATUS_DONE);
+                continue;
+            }
+            if (remote == PRINT_STATUS_CONNECTION_ERROR || remote == PRINT_STATUS_TRANSPORT_ERROR) {
+                last_error_code = remote;
+                work_state = WORK_IDLE;
+                set_status((print_status_t)remote);
+                continue;
+            }
+        }
+        printf("Print: ignored remote status %u\n", remote);
+    }
+}
+
+static void print_bridge_poll_reset_switch(void)
+{
+    const bool reset_state = gpio_get(PRINT_RESET_SWITCH_PIN);
+    if (!reset_state && last_reset_switch_state && reset_debounce_counter <= 0) {
+        printf("Print: RP2040 reset requested\n");
+        sleep_ms(20);
+        watchdog_reboot(0, 0, 0);
+        while (true)
+            tight_loop_contents();
+    }
+    last_reset_switch_state = reset_state;
+    if (reset_debounce_counter > 0)
+        reset_debounce_counter--;
+    if (!reset_state)
+        reset_debounce_counter = 12;
+}
+
 void print_bridge_init(void)
 {
     uart_init(PRINT_UART_ID, PRINT_UART_BAUD);
@@ -210,6 +283,19 @@ void print_bridge_init(void)
     gpio_init(PRINT_BUTTON_PIN);
     gpio_set_dir(PRINT_BUTTON_PIN, GPIO_IN);
     gpio_pull_up(PRINT_BUTTON_PIN);
+
+    gpio_init(PRINT_CONNECTED_LED_PIN);
+    gpio_set_dir(PRINT_CONNECTED_LED_PIN, GPIO_OUT);
+    gpio_put(PRINT_CONNECTED_LED_PIN, false);
+
+    gpio_init(PRINT_RESET_SWITCH_PIN);
+    gpio_set_dir(PRINT_RESET_SWITCH_PIN, GPIO_IN);
+    gpio_pull_up(PRINT_RESET_SWITCH_PIN);
+    last_reset_switch_state = gpio_get(PRINT_RESET_SWITCH_PIN);
+
+    gpio_init(PRINT_FRAME_SELECT_PIN);
+    gpio_set_dir(PRINT_FRAME_SELECT_PIN, GPIO_IN);
+    gpio_pull_up(PRINT_FRAME_SELECT_PIN);
 
     set_status(PRINT_STATUS_IDLE);
 }
@@ -238,6 +324,8 @@ bool print_bridge_enqueue_frame(const uint8_t *packed_frame)
 void print_bridge_task(void)
 {
     const uint64_t now = time_us_64();
+    print_bridge_poll_reset_switch();
+    print_bridge_poll_remote_status();
 
     if (work_state != WORK_IDLE && now - job_started_at > PRINT_JOB_TIMEOUT_US) {
         last_error_code = 1;
@@ -254,8 +342,10 @@ void print_bridge_task(void)
             packet_seq = 0;
             raster_offset = 0;
             job_started_at = now;
+            active_frame_enabled = !gpio_get(PRINT_FRAME_SELECT_PIN);
             prepare_print_raster_begin();
             work_state = WORK_PREPARE;
+            printf("Print: frame %s\n", active_frame_enabled ? "enabled" : "disabled");
             set_status(PRINT_STATUS_PREPARING);
         } else if (status == PRINT_STATUS_DONE || status == PRINT_STATUS_QUEUE_FULL) {
             set_status(PRINT_STATUS_IDLE);
@@ -277,7 +367,7 @@ void print_bridge_task(void)
         payload[3] = (uint8_t)(PRINT_HEIGHT_DOTS >> 8);
         payload[4] = (uint8_t)(PRINT_BYTES_PER_ROW);
         payload[5] = (uint8_t)(PRINT_BYTES_PER_ROW >> 8);
-        payload[6] = PRINT_FRAME_FLAG_DITHER;
+        payload[6] = PRINT_FRAME_FLAG_DITHER | (active_frame_enabled ? PRINT_FRAME_FLAG_FRAME : 0);
         payload[7] = 0;
         payload[8] = (uint8_t)(PRINT_RASTER_SIZE);
         payload[9] = (uint8_t)(PRINT_RASTER_SIZE >> 8);
@@ -310,21 +400,7 @@ void print_bridge_task(void)
     case WORK_WAIT_REMOTE:
         if (now - last_status_poll_at >= PRINT_STATUS_POLL_INTERVAL_US) {
             last_status_poll_at = now;
-            while (uart_is_readable(PRINT_UART_ID)) {
-                const uint8_t remote = uart_getc(PRINT_UART_ID);
-                if (remote == PRINT_STATUS_DONE) {
-                    ++completed_jobs;
-                    work_state = WORK_IDLE;
-                    set_status(PRINT_STATUS_DONE);
-                    break;
-                }
-                if (remote == PRINT_STATUS_CONNECTION_ERROR || remote == PRINT_STATUS_TRANSPORT_ERROR) {
-                    last_error_code = remote;
-                    work_state = WORK_IDLE;
-                    set_status((print_status_t)remote);
-                    break;
-                }
-            }
+            print_bridge_poll_remote_status();
         }
         break;
     }
@@ -338,6 +414,7 @@ print_bridge_snapshot_t print_bridge_get_snapshot(void)
         .completed_jobs = completed_jobs,
         .dropped_jobs = dropped_jobs,
         .last_error_code = last_error_code,
+        .printer_connected = printer_connected,
     };
 }
 
@@ -354,6 +431,8 @@ const char *print_bridge_status_name(print_status_t s)
     case PRINT_STATUS_QUEUE_FULL: return "print queue full";
     case PRINT_STATUS_CONNECTION_ERROR: return "connection error";
     case PRINT_STATUS_TRANSPORT_ERROR: return "transport error";
+    case PRINT_STATUS_PRINTER_CONNECTED: return "printer connected";
+    case PRINT_STATUS_PRINTER_DISCONNECTED: return "printer disconnected";
     default: return "unknown";
     }
 }

@@ -22,6 +22,8 @@ pio device monitor -d apps/esp32_phomemo_bridge -b 115200
 
 Los logs muestran arranque, configuracion UART/BLE, conexion a la impresora, paquetes recibidos desde el RP2040, progreso de impresion, finalizacion y errores.
 
+Cuando la impresora queda conectada y la caracteristica TX esta lista, el XIAO envia el estado `10` al RP2040. Si se desconecta o falla la preparacion BLE, envia `11`. El RP2040 usa esos estados para controlar el LED de impresora conectada.
+
 ## Transporte Bluetooth
 
 El sketch incluido para XIAO ESP32S3 conecta por defecto a la impresora por MAC y usa los UUIDs BLE escaneados para la Phomemo T02:

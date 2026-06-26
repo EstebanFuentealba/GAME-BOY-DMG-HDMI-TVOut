@@ -26,6 +26,7 @@ target_link_libraries(gameboy_dvi
 	hardware_irq
 	hardware_uart
 	hardware_vreg
+	hardware_watchdog
 )
 
 # create map/bin/hex file etc.

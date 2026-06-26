@@ -20,6 +20,9 @@ Esta funcionalidad agrega una ruta de impresion independiente del pipeline HDMI:
 | 7 | Boton de impresion, activo en bajo con pull-up interno |
 | 8 | UART1 TX hacia XIAO ESP32S3 D7 / GPIO44 RX |
 | 9 | UART1 RX desde XIAO ESP32S3 D6 / GPIO43 TX |
+| 10 | LED de impresora conectada, activo en alto |
+| 11 | Reset RP2040, activo en bajo: pulsar a GND reinicia el firmware |
+| 12 | Selector de marco, activo en bajo: a GND imprime con frame; abierto imprime normal |
 
 Los buffers de impresion son independientes de los dos buffers de captura HDMI. La cola acepta dos capturas pendientes; si se presiona el boton con la cola llena, el trabajo se descarta y se reporta `print queue full`.
 
@@ -53,7 +56,7 @@ El RP2040 imprime por UART de debug estos estados:
 - `connection error`
 - `print completed`
 
-El XIAO ESP32S3 responde al RP2040 con un byte compatible con `print_status_t`: `6` completado, `8` error de conexion, `9` error de transporte.
+El XIAO ESP32S3 responde al RP2040 con un byte compatible con `print_status_t`: `6` completado, `8` error de conexion, `9` error de transporte, `10` impresora conectada, `11` impresora desconectada.
 
 ## Configuracion BLE T02
 

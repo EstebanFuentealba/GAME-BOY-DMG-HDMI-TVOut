@@ -13,6 +13,9 @@
 #define PRINT_UART_BAUD 921600
 
 #define PRINT_BUTTON_PIN 7
+#define PRINT_CONNECTED_LED_PIN 10
+#define PRINT_RESET_SWITCH_PIN 11
+#define PRINT_FRAME_SELECT_PIN 12
 
 #define PRINT_WIDTH_DOTS 384
 #define PRINT_SCALE_Y_NUM PRINT_WIDTH_DOTS
@@ -32,6 +35,8 @@ typedef enum {
     PRINT_STATUS_QUEUE_FULL,
     PRINT_STATUS_CONNECTION_ERROR,
     PRINT_STATUS_TRANSPORT_ERROR,
+    PRINT_STATUS_PRINTER_CONNECTED,
+    PRINT_STATUS_PRINTER_DISCONNECTED,
 } print_status_t;
 
 typedef struct {
@@ -40,6 +45,7 @@ typedef struct {
     uint32_t completed_jobs;
     uint32_t dropped_jobs;
     uint32_t last_error_code;
+    bool printer_connected;
 } print_bridge_snapshot_t;
 
 void print_bridge_init(void);
