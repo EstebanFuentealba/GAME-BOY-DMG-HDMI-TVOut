@@ -323,7 +323,7 @@ bool print_bridge_enqueue_frame(const uint8_t *packed_frame)
 {
     uint32_t save = save_and_disable_interrupts();
 
-    if (queue_count >= PRINT_QUEUE_DEPTH) {
+    if (work_state != WORK_IDLE || queue_count >= PRINT_QUEUE_DEPTH) {
         ++dropped_jobs;
         restore_interrupts(save);
         set_status(PRINT_STATUS_QUEUE_FULL);
@@ -338,6 +338,11 @@ bool print_bridge_enqueue_frame(const uint8_t *packed_frame)
     memcpy(print_queue[head], packed_frame, PACKED_FRAME_SIZE);
     set_status(PRINT_STATUS_QUEUED);
     return true;
+}
+
+bool print_bridge_is_busy(void)
+{
+    return work_state != WORK_IDLE || queue_count > 0;
 }
 
 void print_bridge_task(void)

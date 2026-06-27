@@ -54,6 +54,7 @@ typedef struct {
 
 void print_bridge_init(void);
 bool print_bridge_enqueue_frame(const uint8_t *packed_frame);
+bool print_bridge_is_busy(void);
 void print_bridge_task(void);
 print_bridge_snapshot_t print_bridge_get_snapshot(void);
 const char *print_bridge_status_name(print_status_t status);
