@@ -8,6 +8,7 @@
 #include "hardware/watchdog.h"
 #include "pico/time.h"
 #include "print_frame_jp.h"
+#include "print_header_retroconce.h"
 
 #define PRINT_QUEUE_DEPTH 2
 #define PRINT_PACKET_MAGIC 0x52504247u /* GBPR, little endian on UART */
@@ -115,10 +116,17 @@ static bool frame_bit(const uint8_t *bits, int x, int y)
     return (bits[bit_idx >> 3] & (uint8_t)(0x80u >> (bit_idx & 7))) != 0;
 }
 
+static int header_pixel_luma(int print_x, int print_y)
+{
+    const int src_x = (print_x * PRINT_HEADER_RETROCONCE_WIDTH) / PRINT_WIDTH_DOTS;
+    const int src_y = (print_y * PRINT_HEADER_RETROCONCE_HEIGHT) / PRINT_HEADER_HEIGHT_DOTS;
+    return print_header_retroconce_luma[src_y * PRINT_HEADER_RETROCONCE_WIDTH + src_x];
+}
+
 static int framed_pixel_luma(const uint8_t *packed_frame, int print_x, int print_y)
 {
     const int frame_x = (print_x * PRINT_FRAME_JP_WIDTH) / PRINT_WIDTH_DOTS;
-    const int frame_y = (print_y * PRINT_FRAME_JP_HEIGHT) / PRINT_HEIGHT_DOTS;
+    const int frame_y = (print_y * PRINT_FRAME_JP_HEIGHT) / PRINT_CAPTURE_HEIGHT_DOTS;
 
     if (frame_bit(print_frame_jp_mask, frame_x, frame_y))
         return frame_bit(print_frame_jp_ink, frame_x, frame_y) ? 0 : 255;
@@ -138,11 +146,16 @@ static int framed_pixel_luma(const uint8_t *packed_frame, int print_x, int print
 
 static int print_pixel_luma(const uint8_t *packed_frame, int print_x, int print_y)
 {
+    if (print_y < PRINT_HEADER_HEIGHT_DOTS)
+        return header_pixel_luma(print_x, print_y);
+
+    const int capture_y = print_y - PRINT_HEADER_HEIGHT_DOTS;
+
     if (active_frame_enabled)
-        return framed_pixel_luma(packed_frame, print_x, print_y);
+        return framed_pixel_luma(packed_frame, print_x, capture_y);
 
     const int src_x = (print_x * DMG_PIXELS_X) / PRINT_WIDTH_DOTS;
-    const int src_y = (print_y * DMG_PIXELS_Y) / PRINT_HEIGHT_DOTS;
+    const int src_y = (capture_y * DMG_PIXELS_Y) / PRINT_CAPTURE_HEIGHT_DOTS;
     return pixel_luma(packed_frame, src_x, src_y);
 }
 
@@ -161,6 +174,11 @@ static bool prepare_print_raster_step(const uint8_t *packed_frame)
         : prepare_y + PRINT_PREPARE_ROWS_PER_TASK;
 
     for (int y = prepare_y; y < y_end; ++y) {
+        if (y == PRINT_HEADER_HEIGHT_DOTS) {
+            memset(dither_err_curr, 0, sizeof(dither_err_curr));
+            memset(dither_err_next, 0, sizeof(dither_err_next));
+        }
+
         uint8_t *dst_row = print_raster + y * PRINT_BYTES_PER_ROW;
 
         for (int x = 0; x < PRINT_WIDTH_DOTS; ++x) {

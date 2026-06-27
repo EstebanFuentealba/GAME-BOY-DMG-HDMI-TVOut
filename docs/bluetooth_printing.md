@@ -5,8 +5,9 @@ Esta funcionalidad agrega una ruta de impresion independiente del pipeline HDMI:
 1. El boton en `GPIO 7` del RP2040 solicita una captura.
 2. El RP2040 copia el framebuffer 2bpp visible a una cola dedicada.
 3. La cola procesa el trabajo fuera del camino critico de captura/DVI:
+   - agrega la cabecera `assets/retroconce_frame.png` de `160x58`, escalada a `384x139`, antes de la captura;
    - escala `160x144` a `384x346`;
-   - compone la captura dentro de un marco estilo Game Boy Camera;
+   - opcionalmente compone la captura dentro de un marco estilo Game Boy Camera;
    - convierte a raster termico 1-bit;
    - aplica dithering Floyd-Steinberg con umbral alto para favorecer negros mas densos;
    - envia paquetes UART al XIAO ESP32S3 en trozos pequenos.
@@ -22,9 +23,11 @@ Esta funcionalidad agrega una ruta de impresion independiente del pipeline HDMI:
 | 9 | UART1 RX desde XIAO ESP32S3 D6 / GPIO43 TX |
 | 10 | LED de impresora conectada, activo en alto |
 | 11 | Reset RP2040, activo en bajo: pulsar a GND reinicia el firmware |
-| 12 | Selector de marco, activo en bajo: a GND imprime con frame; abierto imprime normal |
+| 12 | Selector de marco, activo en bajo: a GND imprime la captura con frame; abierto imprime captura normal |
 
 Los buffers de impresion son independientes de los dos buffers de captura HDMI. La cola acepta dos capturas pendientes; si se presiona el boton con la cola llena, el trabajo se descarta y se reporta `print queue full`.
+
+La cabecera Retro Conce se imprime siempre al inicio de cada trabajo. El selector de `GPIO 12` solo cambia el estilo de la captura que se imprime debajo de esa cabecera.
 
 ## Protocolo UART RP2040 -> XIAO ESP32S3
 
