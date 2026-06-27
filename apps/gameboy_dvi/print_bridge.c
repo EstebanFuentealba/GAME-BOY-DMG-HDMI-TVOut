@@ -15,6 +15,7 @@
 #define PRINT_DATA_CHUNK_SIZE 64
 #define PRINT_FRAME_FLAG_DITHER 0x01
 #define PRINT_FRAME_FLAG_FRAME 0x02
+#define PRINT_DITHER_THRESHOLD 180
 #define PRINT_PREPARE_ROWS_PER_TASK 8
 #define PRINT_STATUS_POLL_INTERVAL_US 50000
 #define PRINT_JOB_TIMEOUT_US 15000000
@@ -169,7 +170,7 @@ static bool prepare_print_raster_step(const uint8_t *packed_frame)
             else if (old_pixel > 255)
                 old_pixel = 255;
 
-            const bool black = old_pixel < 128;
+            const bool black = old_pixel < PRINT_DITHER_THRESHOLD;
             const int new_pixel = black ? 0 : 255;
             const int quant_error = old_pixel - new_pixel;
 

@@ -8,7 +8,7 @@ Esta funcionalidad agrega una ruta de impresion independiente del pipeline HDMI:
    - escala `160x144` a `384x346`;
    - compone la captura dentro de un marco estilo Game Boy Camera;
    - convierte a raster termico 1-bit;
-   - aplica dithering Floyd-Steinberg;
+   - aplica dithering Floyd-Steinberg con umbral alto para favorecer negros mas densos;
    - envia paquetes UART al XIAO ESP32S3 en trozos pequenos.
 4. El XIAO ESP32S3 recibe el raster completo y lo envia por BLE a la Phomemo T02, si la unidad expone una caracteristica BLE escribible.
 5. El XIAO ESP32S3 devuelve un byte de estado al RP2040.
@@ -92,5 +92,7 @@ Phomemo no publica una especificacion oficial estable para la T02. El firmware X
 La secuencia T02 implementada esta basada en `iamjackg/esp32-phomemo-gameboy-printer`: inicializa la impresora, centra la imagen, envia bloques raster `GS v 0` de dos lineas y termina con comandos `1f 11`. Ese proyecto acredita el protocolo reverse engineered de `vivier/phomemo-tools`.
 
 Al finalizar, el XIAO ESP32S3 envia filas raster en blanco para forzar un avance extra de papel y dejar margen de corte.
+
+Para mejorar contraste, el XIAO ESP32S3 envia bloques raster mas grandes, evita bytes `0x0a` dentro del raster porque la T02 puede tratarlos como salto de linea, y baja la cadencia BLE para evitar perdidas/saturacion durante zonas muy negras.
 
 Hay una diferencia de hardware importante: el proyecto de referencia usa `BluetoothSerial`, o sea Bluetooth clasico/RFCOMM. El ESP32S3 solo soporta BLE. Si tu T02 no expone un servicio BLE escribible compatible y solo funciona por RFCOMM, el puente debe moverse a un ESP32 con Bluetooth clasico, por ejemplo ESP32-WROOM-32.

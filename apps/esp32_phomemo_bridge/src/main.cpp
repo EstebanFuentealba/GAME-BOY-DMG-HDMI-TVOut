@@ -16,7 +16,8 @@ static constexpr uint8_t STATUS_PRINTER_CONNECTED = 10;
 static constexpr uint8_t STATUS_PRINTER_DISCONNECTED = 11;
 static constexpr uint32_t LOG_BAUD = 115200;
 static constexpr size_t PRINTER_BLE_CHUNK_SIZE = 20;
-static constexpr uint32_t PRINTER_BLE_CHUNK_DELAY_US = 800;
+static constexpr uint32_t PRINTER_BLE_CHUNK_DELAY_US = 1500;
+static constexpr uint16_t PRINTER_RASTER_BLOCK_ROWS = 128;
 
 #define SERVICE_UUID "0000ff00-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID_TX "0000ff02-0000-1000-8000-00805f9b34fb"
@@ -68,6 +69,7 @@ static PrintJob job;
 static bool printerConnected = false;
 static unsigned long totalPrinterBytesSent = 0;
 static unsigned long totalPrinterPacketsSent = 0;
+static uint8_t printBlockBuffer[8 + (64 * PRINTER_RASTER_BLOCK_ROWS)];
 
 static void logf(const char *fmt, ...) {
   char message[256];
@@ -290,6 +292,11 @@ static bool feedBlankRasterRows(uint16_t bytesPerRow, uint16_t rows) {
   return true;
 }
 
+static void appendRasterByte(uint8_t *buffer, size_t &len, uint8_t value) {
+  // Phomemo T02 treats a bare 0x0a inside raster data like a line feed.
+  buffer[len++] = (value == 0x0a) ? 0x14 : value;
+}
+
 static bool sendPhomemoRaster(const PrintJob &j) {
   if (!j.raster || !j.width || !j.height || j.receivedBytes != j.expectedBytes) {
     logf("ERROR print job invalid: raster=%p width=%u height=%u received=%lu expected=%lu",
@@ -331,47 +338,49 @@ static bool sendPhomemoRaster(const PrintJob &j) {
   }
   delay(100);
 
-  for (uint16_t y = 0; y < j.height; y += 2) {
-    uint8_t blockBuffer[8 + (64 * 2)];
+  for (uint16_t y = 0; y < j.height;) {
+    const uint16_t blockRows = (j.height - y > PRINTER_RASTER_BLOCK_ROWS)
+        ? PRINTER_RASTER_BLOCK_ROWS
+        : (j.height - y);
     size_t blockLen = 0;
     const uint8_t blockMarker[] = {
         0x1d, 0x76, 0x30, 0x00,
         static_cast<uint8_t>(j.bytesPerRow & 0xff),
         static_cast<uint8_t>(j.bytesPerRow >> 8),
+        static_cast<uint8_t>(blockRows & 0xff),
+        static_cast<uint8_t>(blockRows >> 8),
     };
-    uint8_t blankRow[64] = {0};
 
-    if (j.bytesPerRow > sizeof(blankRow)) {
-      logf("ERROR bytesPerRow too large: %u > %u", j.bytesPerRow, static_cast<unsigned>(sizeof(blankRow)));
+    if (j.bytesPerRow > 64) {
+      logf("ERROR bytesPerRow too large: %u > 64", j.bytesPerRow);
       return false;
     }
-    if (sizeof(blockMarker) + 2 + j.bytesPerRow * 2 > sizeof(blockBuffer)) {
+    if (sizeof(blockMarker) + j.bytesPerRow * blockRows > sizeof(printBlockBuffer)) {
       logf("ERROR print block buffer too small");
       return false;
     }
-    if ((y % 32) == 0) {
-      const uint16_t rowEnd = (y + 31 < j.height) ? y + 31 : j.height - 1;
+    {
+      const uint16_t rowEnd = y + blockRows - 1;
       logf("PRINT rows %u-%u / %u", y, rowEnd, j.height);
     }
 
-    memcpy(blockBuffer + blockLen, blockMarker, sizeof(blockMarker));
+    memcpy(printBlockBuffer + blockLen, blockMarker, sizeof(blockMarker));
     blockLen += sizeof(blockMarker);
-    blockBuffer[blockLen++] = 0x02;
-    blockBuffer[blockLen++] = 0x00;
-    memcpy(blockBuffer + blockLen, j.raster + y * j.bytesPerRow, j.bytesPerRow);
-    blockLen += j.bytesPerRow;
-    if (y + 1 < j.height) {
-      memcpy(blockBuffer + blockLen, j.raster + (y + 1) * j.bytesPerRow, j.bytesPerRow);
-    } else {
-      memcpy(blockBuffer + blockLen, blankRow, j.bytesPerRow);
-    }
-    blockLen += j.bytesPerRow;
 
-    if (!writePrinterBytes(blockBuffer, blockLen)) {
-      logf("ERROR print block header failed at row=%u", y);
+    for (uint16_t row = 0; row < blockRows; ++row) {
+      const uint8_t *src = j.raster + (y + row) * j.bytesPerRow;
+      for (uint16_t x = 0; x < j.bytesPerRow; ++x) {
+        appendRasterByte(printBlockBuffer, blockLen, src[x]);
+      }
+    }
+
+    if (!writePrinterBytes(printBlockBuffer, blockLen)) {
+      logf("ERROR print raster block failed at row=%u", y);
       return false;
     }
+    y += blockRows;
     yield();
+    delay(25);
   }
 
   logf("PRINT feed paper with blank raster rows");
