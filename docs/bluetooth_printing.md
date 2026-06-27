@@ -5,7 +5,7 @@ Esta funcionalidad agrega una ruta de impresion independiente del pipeline HDMI:
 1. El boton en `GPIO 7` del RP2040 solicita una captura.
 2. El RP2040 copia el framebuffer 2bpp visible a una cola dedicada.
 3. La cola procesa el trabajo fuera del camino critico de captura/DVI:
-   - agrega la cabecera `assets/retroconce_frame.png` de `160x58`, escalada a `384x139`, antes de la captura;
+   - agrega la cabecera `assets/retroconce_384x139.png` de `384x139` antes de la captura;
    - escala `160x144` a `384x346`;
    - opcionalmente compone la captura dentro de un marco estilo Game Boy Camera;
    - convierte a raster termico 1-bit;
