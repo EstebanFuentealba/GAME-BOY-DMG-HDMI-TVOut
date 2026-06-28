@@ -68,94 +68,6 @@ struct dvi_inst dvi0;
 
 uint16_t line_buffers[8][FRAME_WIDTH];
 
-#define PRINTING_TEXT "Imprimiendo..."
-#define PRINTING_TEXT_LEN ((int)(sizeof(PRINTING_TEXT) - 1))
-#define PRINTING_FONT_W 3
-#define PRINTING_FONT_H 5
-#define PRINTING_FONT_SPACING 1
-#define PRINTING_FONT_SCALE 2
-#define PRINTING_TEXT_W ((PRINTING_TEXT_LEN * PRINTING_FONT_W + (PRINTING_TEXT_LEN - 1) * PRINTING_FONT_SPACING) * PRINTING_FONT_SCALE)
-#define PRINTING_TEXT_H (PRINTING_FONT_H * PRINTING_FONT_SCALE)
-#define PRINTING_TEXT_X (FRAME_WIDTH - PRINTING_TEXT_W - 4)
-#define PRINTING_TEXT_Y (FRAME_HEIGHT - PRINTING_TEXT_H - 4)
-
-static uint8_t printing_font_row(char c, int row)
-{
-    switch (c) {
-    case 'I': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x7, 0x2, 0x2, 0x2, 0x7 };
-        return rows[row];
-    }
-    case 'd': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x1, 0x1, 0x7, 0x5, 0x7 };
-        return rows[row];
-    }
-    case 'e': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x7, 0x4, 0x7, 0x4, 0x7 };
-        return rows[row];
-    }
-    case 'i': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x2, 0x0, 0x2, 0x2, 0x2 };
-        return rows[row];
-    }
-    case 'm': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x0, 0x5, 0x7, 0x5, 0x5 };
-        return rows[row];
-    }
-    case 'n': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x0, 0x6, 0x5, 0x5, 0x5 };
-        return rows[row];
-    }
-    case 'o': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x0, 0x7, 0x5, 0x5, 0x7 };
-        return rows[row];
-    }
-    case 'p': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x6, 0x5, 0x6, 0x4, 0x4 };
-        return rows[row];
-    }
-    case 'r': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x0, 0x6, 0x5, 0x4, 0x4 };
-        return rows[row];
-    }
-    case '.': {
-        static const uint8_t rows[PRINTING_FONT_H] = { 0x0, 0x0, 0x0, 0x0, 0x2 };
-        return rows[row];
-    }
-    default:
-        return 0;
-    }
-}
-
-static void draw_printing_text_pass(uint16_t *sl, int screen_y, uint16_t color, int dx, int dy)
-{
-    const int local_y = screen_y - (PRINTING_TEXT_Y + dy);
-    if (local_y < 0 || local_y >= PRINTING_TEXT_H)
-        return;
-
-    const int font_y = local_y / PRINTING_FONT_SCALE;
-    for (int i = 0; i < PRINTING_TEXT_LEN; ++i) {
-        const uint8_t bits = printing_font_row(PRINTING_TEXT[i], font_y);
-        const int char_x = PRINTING_TEXT_X + dx + i * (PRINTING_FONT_W + PRINTING_FONT_SPACING) * PRINTING_FONT_SCALE;
-        for (int px = 0; px < PRINTING_FONT_W; ++px) {
-            if ((bits & (uint8_t)(0x4u >> px)) == 0)
-                continue;
-            const int dst_x = char_x + px * PRINTING_FONT_SCALE;
-            for (int sx = 0; sx < PRINTING_FONT_SCALE; ++sx) {
-                const int x = dst_x + sx;
-                if (x >= 0 && x < FRAME_WIDTH)
-                    sl[x] = color;
-            }
-        }
-    }
-}
-
-static void draw_printing_overlay_scanline(uint16_t *sl, int screen_y, const uint16_t *pal)
-{
-    draw_printing_text_pass(sl, screen_y, pal[0], 1, 1);
-    draw_printing_text_pass(sl, screen_y, pal[3], 0, 0);
-}
-
 void core1_main() {
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
     while (queue_is_empty(&dvi0.q_colour_valid))
@@ -289,7 +201,6 @@ int main() {
         }
 
         print_bridge_task();
-        const bool printing_overlay_active = print_bridge_is_busy();
 
         // Single volatile read — use splash when no GB signal
         const uint8_t *const frame = (no_signal_counter >= NO_SIGNAL_TIMEOUT)
@@ -309,7 +220,6 @@ int main() {
             for (uint _y = 0; _y < (TOP); ++_y) {                                   \
                 uint16_t *sl = line_buffers[buf_idx];                                \
                 for (uint x = 0; x < FRAME_WIDTH; ++x) sl[x] = bg;                 \
-                if (printing_overlay_active) draw_printing_overlay_scanline(sl, _y, pal); \
                 PUSH_SCANLINE(sl);                                                   \
             }                                                                        \
             for (uint _y = 0; _y < (ACTIVE); ++_y) {                                \
@@ -324,13 +234,11 @@ int main() {
                     }                                                                \
                 }                                                                    \
                 for (uint x = (LEFT) + (SCALED_W); x < FRAME_WIDTH; ++x) sl[x] = bg; \
-                if (printing_overlay_active) draw_printing_overlay_scanline(sl, (TOP) + _y, pal); \
                 PUSH_SCANLINE(sl);                                                   \
             }                                                                        \
             for (uint _y = (TOP) + (ACTIVE); _y < FRAME_HEIGHT; ++_y) {             \
                 uint16_t *sl = line_buffers[buf_idx];                                \
                 for (uint x = 0; x < FRAME_WIDTH; ++x) sl[x] = bg;                 \
-                if (printing_overlay_active) draw_printing_overlay_scanline(sl, _y, pal); \
                 PUSH_SCANLINE(sl);                                                   \
             }                                                                        \
         } while (0)
@@ -345,7 +253,6 @@ int main() {
                 for (uint y = 0; y < 48; ++y) {
                     uint16_t *sl = line_buffers[buf_idx];
                     for (uint x = 0; x < FRAME_WIDTH; ++x) sl[x] = bg;
-                    if (printing_overlay_active) draw_printing_overlay_scanline(sl, y, pal);
                     PUSH_SCANLINE(sl);
                 }
                 const uint8_t *row = frame;
@@ -359,13 +266,11 @@ int main() {
                         sl[dst+4] = sl[dst+5] = pal[(b >> 2) & 3];
                         sl[dst+6] = sl[dst+7] = pal[b & 3];
                     }
-                    if (printing_overlay_active) draw_printing_overlay_scanline(sl, 48 + y, pal);
                     PUSH_SCANLINE(sl);
                 }
                 for (uint y = 0; y < 48; ++y) {
                     uint16_t *sl = line_buffers[buf_idx];
                     for (uint x = 0; x < FRAME_WIDTH; ++x) sl[x] = bg;
-                    if (printing_overlay_active) draw_printing_overlay_scanline(sl, 48 + DMG_PIXELS_Y + y, pal);
                     PUSH_SCANLINE(sl);
                 }
                 break;
